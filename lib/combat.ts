@@ -22,7 +22,7 @@ export type Combat = {
   deck: DeckState;
   log: CombatLog;
   isOver: boolean;        // true se qualcuno è a 0 HP
-  winner?: "player" | "enemy";
+  winner: "player" | "enemy" | null;
   // API
   draw: (n?: number) => void;
   canPlay: (card: Card) => boolean;
@@ -49,12 +49,13 @@ function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n));
 }
 
-function checkGameOver(state: BattleState) {
-  if (state.player.hp <= 0 && state.enemy.hp <= 0) return { over: true, winner: undefined as any };
-  if (state.player.hp <= 0) return { over: true, winner: "enemy" as const };
-  if (state.enemy.hp <= 0) return { over: true, winner: "player" as const };
-  return { over: false, winner: undefined as any };
+function checkGameOver(state: BattleState): { over: boolean; winner: "player" | "enemy" | null } {
+  if (state.player.hp <= 0 && state.enemy.hp <= 0) return { over: true, winner: null };
+  if (state.player.hp <= 0) return { over: true, winner: "enemy" };
+  if (state.enemy.hp <= 0) return { over: true, winner: "player" };
+  return { over: false, winner: null };
 }
+
 
 // ======== Inizializzazione ========
 
@@ -106,7 +107,7 @@ export function createCombatFromClass(
     deck,
     log: [],
     isOver: false,
-    winner: undefined,
+    winner: null,
 
     draw(n = deck.handSize) {
       for (let i = 0; i < n; i++) {
@@ -151,14 +152,15 @@ export function createCombatFromClass(
       this.deck.hand.splice(idx, 1);
 
       // Controlla se qualcuno è morto
-      const over = checkGameOver(this.state);
-      if (over.over) {
-        this.isOver = true;
-        this.winner = over.winner;
-        if (this.winner === "player") this.log.push(`🏆 ${this.state.player.name} ha sconfitto ${this.state.enemy.name}!`);
-        else if (this.winner === "enemy") this.log.push(`💀 ${this.state.player.name} è stato sconfitto.`);
-        else this.log.push(`☠️ Siete caduti entrambi.`);
-      }
+const result = checkGameOver(this.state);
+if (result.over) {
+  this.isOver = true;
+  this.winner = result.winner;
+  if (this.winner === "player") this.log.push(`🏆 ${this.state.player.name} ha sconfitto ${this.state.enemy.name}!`);
+  else if (this.winner === "enemy") this.log.push(`💀 ${this.state.player.name} è stato sconfitto.`);
+  else this.log.push(`☠️ Siete caduti entrambi.`);
+}
+
     },
 
     endTurn() {
@@ -191,15 +193,16 @@ export function createCombatFromClass(
       }
 
       // Controllo morte dopo l’azione nemico
-      let over = checkGameOver(this.state);
-      if (over.over) {
-        this.isOver = true;
-        this.winner = over.winner;
-        if (this.winner === "player") this.log.push(`🏆 ${this.state.player.name} ha sconfitto ${this.state.enemy.name}!`);
-        else if (this.winner === "enemy") this.log.push(`💀 ${this.state.player.name} è stato sconfitto.`);
-        else this.log.push(`☠️ Siete caduti entrambi.`);
-        return;
-      }
+const result = checkGameOver(this.state);
+if (result.over) {
+  this.isOver = true;
+  this.winner = result.winner;
+  if (this.winner === "player") this.log.push(`🏆 ${this.state.player.name} ha sconfitto ${this.state.enemy.name}!`);
+  else if (this.winner === "enemy") this.log.push(`💀 ${this.state.player.name} è stato sconfitto.`);
+  else this.log.push(`☠️ Siete caduti entrambi.`);
+  return;
+}
+
 
       // ——— Preparazione nuovo turno del GIOCATORE ———
       // Rigeneri un po' di stamina (scegli tu quanto: qui +3 base)

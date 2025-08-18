@@ -12,7 +12,7 @@ function dealDamage(target: "player" | "enemy", rawDamage: number, state: Battle
   const absorbed = Math.min(t.defense, rawDamage);
   t.defense -= absorbed;
 
-  let hpDamage = rawDamage - absorbed;
+  const hpDamage = rawDamage - absorbed;
   if (hpDamage > 0) {
     t.hp = clamp(t.hp - hpDamage, 0, t.hpMax);
   }
