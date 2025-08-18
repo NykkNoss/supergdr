@@ -3,7 +3,7 @@
 
 import { useMemo, useRef, useState } from "react";
 import { createCombatFromClass } from "@/lib/combat";
-import type { Fighter } from "@/lib/tipi-combattimento";
+import type { Fighter } from "@/lib/combat";
 
 // In futuro potrai importare CLASSI e mostrare tutte le opzioni.
 // Per ora la scelta è singola: "Guerriero".
