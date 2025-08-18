@@ -1,242 +1,224 @@
-// lib/combat.ts
+// /lib/combat.ts
+// Engine del combattimento: gestione mazzo, mano, stamina, turni e applicazione effetti.
 
-// ===== Types =====
-export type Fighter = {
-  name: string;
-  atk: number;
-  def: number;
-  hp: number;
-  maxHp: number;
-  sta: number;       // stamina corrente
-  maxSta: number;    // stamina massima
+import { CARTE, Card } from "./carte";
+import { applyCardEffect } from "./effetti";
+import { BattleState, Fighter } from "./tipi-combattimento";
+import { GUERRIERO } from "./classi";
+
+// ======== Tipi interni al combat ========
+
+export type DeckState = {
+  drawPile: Card[];     // pescate da qui
+  discardPile: Card[];  // scarti qui
+  hand: Card[];         // carte in mano
+  handSize: number;     // dimensione mano (es. 3 o 5)
 };
 
-export type BattleFlags = {
-  playerShieldUp: boolean; // annulla il prossimo danno entrante
-  enemyStunned: boolean;   // il nemico salta il prossimo attacco
+export type CombatLog = string[];
+
+export type Combat = {
+  state: BattleState;
+  deck: DeckState;
+  log: CombatLog;
+  isOver: boolean;        // true se qualcuno è a 0 HP
+  winner?: "player" | "enemy";
+  // API
+  draw: (n?: number) => void;
+  canPlay: (card: Card) => boolean;
+  playCard: (cardId: string) => void;
+  endTurn: () => void;
 };
 
-export type Log = string;
+// ======== Utility ========
 
-// ===== Tuning =====
-export const HIT_CHANCE = 0.75;         // % di colpire
-export const CRIT_CHANCE = 0.05;        // % critico base
-export const REST_STAMINA_GAIN = 3;     // stamina recuperata da Riposa
-
-// ===== Fighters base =====
-export function makePlayer(): Fighter {
-  return {
-    name: "Guerriero",
-    atk: 5,
-    def: 10,
-    hp: 12,
-    maxHp: 12,
-    sta: 4,
-    maxSta: 6,
-  };
-}
-
-export function makeGoblin(): Fighter {
-  return {
-    name: "Goblin",
-    atk: 2,
-    def: 2,
-    hp: 6,
-    maxHp: 6,
-    sta: 0,
-    maxSta: 0,
-  };
-}
-
-// RNG helper
-export function roll(prob: number) {
-  return Math.random() < prob;
-}
-
-// Danno base
-export function computeHitAndDamage(
-  attacker: Fighter,
-  defender: Fighter,
-  opts?: { critChance?: number; powerBonus?: number }
-) {
-  const hit = roll(HIT_CHANCE);
-  if (!hit) {
-    return { hit: false, crit: false, dmg: 0 };
-  }
-
-  const critChance = opts?.critChance ?? CRIT_CHANCE;
-  const powerBonus = opts?.powerBonus ?? 0;
-
-  let base = Math.max(1, (attacker.atk + powerBonus) - defender.def);
-  const crit = roll(critChance);
-  if (crit) base *= 2;
-
-  return { hit: true, crit, dmg: base };
-}
-
-// ===== Abilità Guerriero =====
-export type WarriorAbilityKey = "SWORD" | "SHIELD" | "FEINT" | "POTION" | "LOWKICK";
-
-export type Ability = {
-  key: WarriorAbilityKey;
-  name: string;
-  staminaCost: number;
-  use: (player: Fighter, enemy: Fighter, flags: BattleFlags) => {
-    player: Fighter;
-    enemy: Fighter;
-    flags: BattleFlags;
-    logs: Log[];
-    enemyDiedFromAction?: boolean;
-  };
-};
-
-export function warriorDeck(): Ability[] {
-  return [
-    {
-      key: "SWORD",
-      name: "Colpo di Spada",
-      staminaCost: 2,
-      use: (player, enemy, flags) => {
-        const logs: Log[] = [];
-        const res = computeHitAndDamage(player, enemy, { powerBonus: 2 });
-        const newEnemy = { ...enemy };
-        if (res.hit) {
-          newEnemy.hp = Math.max(0, enemy.hp - res.dmg);
-          logs.push(`Colpo di Spada! Infliggi ${res.dmg} danni${res.crit ? " (CRITICO!)" : ""}.`);
-        } else {
-          logs.push("Colpo di Spada mancato!");
-        }
-        return {
-          player: { ...player, sta: Math.max(0, player.sta - 2) },
-          enemy: newEnemy,
-          flags: { ...flags },
-          logs,
-          enemyDiedFromAction: newEnemy.hp <= 0,
-        };
-      },
-    },
-    {
-      key: "SHIELD",
-      name: "In Alto lo Scudo",
-      staminaCost: 2,
-      use: (player, enemy, flags) => {
-        const logs: Log[] = ["Alzi lo scudo: annullerai il prossimo danno in arrivo."];
-        return {
-          player: { ...player, sta: Math.max(0, player.sta - 2) },
-          enemy: { ...enemy },
-          flags: { ...flags, playerShieldUp: true },
-          logs,
-        };
-      },
-    },
-    {
-      key: "FEINT",
-      name: "Finta e Colpo",
-      staminaCost: 3,
-      use: (player, enemy, flags) => {
-        const logs: Log[] = [];
-        const res = computeHitAndDamage(player, enemy, { critChance: 0.3 });
-        const newEnemy = { ...enemy };
-        if (res.hit) {
-          newEnemy.hp = Math.max(0, enemy.hp - res.dmg);
-          logs.push(`Finta e Colpo! Infliggi ${res.dmg} danni${res.crit ? " (CRITICO!)" : ""}.`);
-        } else {
-          logs.push("Finta e Colpo mancato!");
-        }
-        return {
-          player: { ...player, sta: Math.max(0, player.sta - 3) },
-          enemy: newEnemy,
-          flags: { ...flags },
-          logs,
-          enemyDiedFromAction: newEnemy.hp <= 0,
-        };
-      },
-    },
-    {
-      key: "POTION",
-      name: "Pozione di Cura",
-      staminaCost: 3,
-      use: (player, enemy, flags) => {
-        const heal = Math.min(3, player.maxHp - player.hp);
-        const logs: Log[] = [`Bevi una pozione e recuperi ${heal} HP.`];
-        return {
-          player: { ...player, hp: player.hp + heal, sta: Math.max(0, player.sta - 3) },
-          enemy: { ...enemy },
-          flags: { ...flags },
-          logs,
-        };
-      },
-    },
-    {
-      key: "LOWKICK",
-      name: "Calcio Basso",
-      staminaCost: 2,
-      use: (player, enemy, flags) => {
-        const logs: Log[] = [`Calcio Basso! ${enemy.name} salterà il prossimo attacco.`];
-        return {
-          player: { ...player, sta: Math.max(0, player.sta - 2) },
-          enemy: { ...enemy },
-          flags: { ...flags, enemyStunned: true },
-          logs,
-        };
-      },
-    },
-  ];
-}
-
-// Utility: pescare 2 abilità a caso dal mazzo
-export function pickTwoRandom<T>(arr: T[]): T[] {
-  const copy = [...arr];
-  for (let i = copy.length - 1; i > 0; i--) {
+function randShuffle<T>(arr: T[]): T[] {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
-    [copy[i], copy[j]] = [copy[j], copy[i]];
+    [a[i], a[j]] = [a[j], a[i]];
   }
-  return copy.slice(0, 2);
+  return a;
 }
 
-// ===== Azioni standard =====
-
-// Riposa: recupera stamina
-export function restAction(player: Fighter) {
-  const gained = Math.min(REST_STAMINA_GAIN, player.maxSta - player.sta);
-  const newPlayer = { ...player, sta: player.sta + gained };
-  const logs: Log[] = [`Riposi e recuperi ${gained} Stamina.`];
-  return { player: newPlayer, logs };
+function getCardById(id: string): Card | undefined {
+  return CARTE.find((c) => c.id === id);
 }
 
-// Attacco base nemico (Goblin) + gestione scudo/stordito
-export function enemyTurn(
+function clamp(n: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, n));
+}
+
+function checkGameOver(state: BattleState) {
+  if (state.player.hp <= 0 && state.enemy.hp <= 0) return { over: true, winner: undefined as any };
+  if (state.player.hp <= 0) return { over: true, winner: "enemy" as const };
+  if (state.enemy.hp <= 0) return { over: true, winner: "player" as const };
+  return { over: false, winner: undefined as any };
+}
+
+// ======== Inizializzazione ========
+
+export function createCombatFromClass(
+  playerName: string,
   enemy: Fighter,
-  player: Fighter,
-  flags: BattleFlags
-) {
-  const logs: Log[] = [];
-  const newPlayer = { ...player };
-  const newFlags = { ...flags };
-
-  if (flags.enemyStunned) {
-    logs.push(`${enemy.name} è stordito e non attacca!`);
-    newFlags.enemyStunned = false;
-    return { player: newPlayer, flags: newFlags, logs };
+  options?: {
+    staminaStart?: number;
+    handSize?: number;
   }
+): Combat {
+  // Per ora scegliamo il Guerriero come richiesto. Più avanti collegheremo la scelta in app/page.ts
+  const base = GUERRIERO.baseStats;
 
-  // Goblin fa un attacco semplice ogni turno
-  const res = computeHitAndDamage(enemy, player);
-  if (res.hit) {
-    let incoming = res.dmg;
+  const player: Fighter = {
+    id: "player",
+    name: playerName,
+    hp: base.hp,
+    hpMax: base.hpMax,
+    atk: base.atk,
+    defense: base.defense,
+    stunned: base.stunned,
+  };
 
-    if (flags.playerShieldUp) {
-      logs.push(`Lo scudo annulla i ${incoming} danni in arrivo!`);
-      incoming = 0;
-      newFlags.playerShieldUp = false;
-    } else {
-      logs.push(`${enemy.name} ti colpisce per ${res.dmg} danni${res.crit ? " (CRITICO!)" : ""}.`);
-    }
+  const stamina = options?.staminaStart ?? 3;
+  const handSize = options?.handSize ?? 3;
 
-    newPlayer.hp = Math.max(0, player.hp - incoming);
-  } else {
-    logs.push(`${enemy.name} manca il colpo!`);
-  }
+  // Crea il mazzo dalla classe (mapping degli id alle Card)
+  const startDeck: Card[] =
+    GUERRIERO.mazzoIniziale
+      .map((id) => getCardById(id))
+      .filter((c): c is Card => !!c);
 
-  return { player: newPlayer, flags: newFlags, logs };
+  const deck: DeckState = {
+    drawPile: randShuffle(startDeck),
+    discardPile: [],
+    hand: [],
+    handSize,
+  };
+
+  const state: BattleState = {
+    player,
+    enemy,
+    stamina,
+  };
+
+  const combat: Combat = {
+    state,
+    deck,
+    log: [],
+    isOver: false,
+    winner: undefined,
+
+    draw(n = deck.handSize) {
+      for (let i = 0; i < n; i++) {
+        // se drawPile è vuota, rimescola gli scarti
+        if (this.deck.drawPile.length === 0 && this.deck.discardPile.length > 0) {
+          this.deck.drawPile = randShuffle(this.deck.discardPile);
+          this.deck.discardPile = [];
+          this.log.push("🔁 Rimescoli gli scarti nel mazzo.");
+        }
+        const card = this.deck.drawPile.shift();
+        if (!card) break;
+        this.deck.hand.push(card);
+      }
+      // animazione: quando peschi, le carte in mano possono comparire con la classe CSS "card-enter-from-bottom"
+      // (vedi esempio UI in basso)
+    },
+
+    canPlay(card: Card) {
+      // Si può giocare se hai stamina sufficiente e il combattimento non è finito
+      if (this.isOver) return false;
+      return this.state.stamina >= card.cost;
+    },
+
+    playCard(cardId: string) {
+      if (this.isOver) return;
+      const idx = this.deck.hand.findIndex((c) => c.id === cardId);
+      if (idx === -1) return;
+
+      const card = this.deck.hand[idx];
+      if (!this.canPlay(card)) {
+        this.log.push(`❌ Stamina insufficiente per giocare "${card.title}".`);
+        return;
+      }
+
+      // Applica effetto (usa effetti.ts)
+      const res = applyCardEffect(card, this.state);
+      this.state = res.state;
+      this.log.push(...res.log);
+
+      // Sposta la carta negli scarti
+      this.deck.discardPile.push(card);
+      this.deck.hand.splice(idx, 1);
+
+      // Controlla se qualcuno è morto
+      const over = checkGameOver(this.state);
+      if (over.over) {
+        this.isOver = true;
+        this.winner = over.winner;
+        if (this.winner === "player") this.log.push(`🏆 ${this.state.player.name} ha sconfitto ${this.state.enemy.name}!`);
+        else if (this.winner === "enemy") this.log.push(`💀 ${this.state.player.name} è stato sconfitto.`);
+        else this.log.push(`☠️ Siete caduti entrambi.`);
+      }
+    },
+
+    endTurn() {
+      if (this.isOver) return;
+
+      // ——— Turno NEMICO ———
+      // Se nemico stordito: salta turno e decrementa
+      if (this.state.enemy.stunned > 0) {
+        this.state.enemy.stunned = Math.max(0, this.state.enemy.stunned - 1);
+        this.log.push(`💫 ${this.state.enemy.name} è stordito e salta il turno.`);
+      } else {
+        // Nemico attacca con il suo ATK base
+        // Simuliamo una "carta attacco" equivalente al suo atk
+        const raw = Math.max(0, Math.floor(this.state.enemy.atk));
+        if (raw > 0) {
+          // Danno al player rispettando la difesa
+          const beforeDef = this.state.player.defense;
+          const absorbed = Math.min(beforeDef, raw);
+          this.state.player.defense = Math.max(0, beforeDef - absorbed);
+          const hpDamage = raw - absorbed;
+          if (hpDamage > 0) {
+            this.state.player.hp = clamp(this.state.player.hp - hpDamage, 0, this.state.player.hpMax);
+          }
+          this.log.push(
+            `👹 ${this.state.enemy.name} attacca: ${raw} danni (assorbiti ${absorbed}, ${hpDamage} a HP) a ${this.state.player.name}.`
+          );
+        } else {
+          this.log.push(`👹 ${this.state.enemy.name} osserva e non attacca.`);
+        }
+      }
+
+      // Controllo morte dopo l’azione nemico
+      let over = checkGameOver(this.state);
+      if (over.over) {
+        this.isOver = true;
+        this.winner = over.winner;
+        if (this.winner === "player") this.log.push(`🏆 ${this.state.player.name} ha sconfitto ${this.state.enemy.name}!`);
+        else if (this.winner === "enemy") this.log.push(`💀 ${this.state.player.name} è stato sconfitto.`);
+        else this.log.push(`☠️ Siete caduti entrambi.`);
+        return;
+      }
+
+      // ——— Preparazione nuovo turno del GIOCATORE ———
+      // Rigeneri un po' di stamina (scegli tu quanto: qui +3 base)
+      this.state.stamina += 3;
+
+      // Pesca fino a rimpiazzare la mano (clear mano e pesca nuova mano)
+      // (Se preferisci la persistenza di mano & pescate incrementali, modifica questa parte)
+      this.deck.discardPile.push(...this.deck.hand);
+      this.deck.hand = [];
+      this.draw(this.deck.handSize);
+
+      // Colorazione "si può/non si può" è demandata alla UI:
+      //  - se this.state.stamina >= card.cost => "playable"
+      //  - altrimenti => "unplayable"
+    },
+  };
+
+  // Mano iniziale + log iniziale
+  combat.draw(combat.deck.handSize);
+  combat.log.push(`⚔️ Inizia lo scontro: ${combat.state.player.name} vs ${combat.state.enemy.name}.`);
+  return combat;
 }

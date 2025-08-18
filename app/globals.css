@@ -1,26 +1,132 @@
-@import "tailwindcss";
+/* Esempio da mettere in un .css/.module.css */
+/* Carta che entra da sotto (slide up) */
+@keyframes card-enter-from-bottom {
+  0%   { transform: translateY(40px) scale(0.98); opacity: 0; }
+  60%  { transform: translateY(-6px) scale(1.01); opacity: 1; }
+  100% { transform: translateY(0) scale(1); opacity: 1; }
+}
 
+.card {
+  transition: transform 120ms ease, box-shadow 120ms ease, filter 120ms ease;
+  border-radius: 10px;
+  padding: 10px;
+  background: #1b1e24;
+  border: 1px solid #2a2f3a;
+}
+
+.card-enter {
+  animation: card-enter-from-bottom 260ms ease both;
+}
+
+/* Stato "si può usare" */
+.card--playable {
+  box-shadow: 0 0 0 2px #22c55e inset; /* verde */
+  cursor: pointer;
+}
+
+/* Stato "non si può usare" */
+.card--unplayable {
+  box-shadow: 0 0 0 2px #ef4444 inset; /* rosso */
+  filter: grayscale(0.6) brightness(0.8);
+  cursor: not-allowed;
+}
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  color-scheme: dark;
+  --bg: #0f1115;          /* sfondo pagina */
+  --panel: #151922;       /* card/pannelli */
+  --border: #2a2f3a;      /* bordi */
+  --text: #e5e7eb;        /* testo principale */
+  --muted: #a6adbb;       /* testo attenuato */
+  --primary: #1f6feb;     /* pulsanti */
+  --ok: #22c55e;
+  --bad: #ef4444;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
+* { box-sizing: border-box; }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html, body {
+  height: 100%;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji";
+}
+
+main {
+  min-height: 100vh;
+}
+
+h1, h2, h3 { margin: 0 0 12px; }
+
+input, button {
+  font: inherit;
+}
+
+input {
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: #0b0e14;
+  color: var(--text);
+}
+
+button {
+  padding: 10px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--primary);
+  color: white;
+  font-weight: 700;
+  cursor: pointer;
+}
+button:disabled { opacity: .6; cursor: not-allowed; }
+
+/* Pannelli riutilizzabili */
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px;
+}
+
+/* Carte (combat) */
+@keyframes card-enter-from-bottom {
+  0%   { transform: translateY(40px) scale(.98); opacity: 0; }
+  60%  { transform: translateY(-6px) scale(1.01); opacity: 1; }
+  100% { transform: translateY(0) scale(1); opacity: 1; }
+}
+
+.card {
+  transition: transform 120ms ease, box-shadow 120ms ease, filter 120ms ease;
+  border-radius: 10px;
+  padding: 10px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+}
+
+.card-enter { animation: card-enter-from-bottom 260ms ease both; }
+
+.card--playable {
+  box-shadow: 0 0 0 2px var(--ok) inset;
+  cursor: pointer;
+}
+
+.card--unplayable {
+  box-shadow: 0 0 0 2px var(--bad) inset;
+  filter: grayscale(.6) brightness(.9);
+  cursor: not-allowed;
+}
+
+/* Liste leggibili su fondo scuro */
+ul { color: var(--text); }
+li { margin: 4px 0; }
+.muted { color: var(--muted); }
+.centered {
+  width: 100%;
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 24px;
 }

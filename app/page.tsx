@@ -1,221 +1,292 @@
+// app/page.tsx
 "use client";
-import { useState } from "react";
-import {
-  Fighter,
-  BattleFlags,
-  makePlayer,
-  makeGoblin,
-  warriorDeck,
-  Ability,
-  pickTwoRandom,
-  restAction,
-  enemyTurn,
-} from "@/lib/combat";
 
-export default function Home() {
-  const [phase, setPhase] = useState<"READY" | "BATTLE" | "GAMEOVER">("READY");
+import { useMemo, useRef, useState } from "react";
+import { createCombatFromClass } from "@/lib/combat";
+import type { Fighter } from "@/lib/tipi-combattimento";
 
-  const [player, setPlayer] = useState<Fighter | null>(null);
-  const [enemy, setEnemy] = useState<Fighter | null>(null);
-  const [flags, setFlags] = useState<BattleFlags>({
-    playerShieldUp: false,
-    enemyStunned: false,
-  });
-  const [log, setLog] = useState<string[]>([]);
+// In futuro potrai importare CLASSI e mostrare tutte le opzioni.
+// Per ora la scelta è singola: "Guerriero".
+export default function HomePage() {
+  const [step, setStep] = useState<"scelta" | "combattimento">("scelta");
+  const [nomeGiocatore, setNomeGiocatore] = useState("Eroe");
+  const [classeSelezionata] = useState<"guerriero">("guerriero"); // placeholder per quando aggiungeremo altre classi
 
-  // Mazzo abilità del Guerriero (array, non funzione!)
-  const deck: Ability[] = warriorDeck();
+  // Nemico di esempio
+  const nemico: Fighter = useMemo(
+    () => ({
+      id: "goblin",
+      name: "Goblin",
+      hp: 18,
+      hpMax: 18,
+      atk: 4,
+      defense: 0,
+      stunned: 0,
+    }),
+    []
+  );
 
-  // Abilità pescate per il turno
-  const [options, setOptions] = useState<Ability[]>([]);
-
-  function startBattle() {
-    const p = makePlayer();
-    const e = makeGoblin();
-    setPlayer(p);
-    setEnemy(e);
-    setFlags({ playerShieldUp: false, enemyStunned: false });
-    setLog([`Entri in battaglia contro un ${e.name}!`]);
-    setOptions(pickTwoRandom(deck));
-    setPhase("BATTLE");
-  }
-
-  function nextGoblin() {
-    const e = makeGoblin();
-    setEnemy(e);
-    setFlags({ playerShieldUp: false, enemyStunned: false });
-    setLog((prev) => [`Arriva un nuovo ${e.name}!`, ...prev]);
-    setOptions(pickTwoRandom(deck));
-  }
-
-  function resetGame() {
-    setPhase("READY");
-    setPlayer(null);
-    setEnemy(null);
-    setFlags({ playerShieldUp: false, enemyStunned: false });
-    setLog([]);
-    setOptions([]);
-  }
-
-  function doRest() {
-    if (!player || !enemy) return;
-    const res = restAction(player);
-    setPlayer(res.player);
-    setLog((prev) => [...res.logs, ...prev]);
-
-    // turno nemico dopo il riposo
-    const et = enemyTurn(enemy, res.player, flags);
-    setPlayer(et.player);
-    setFlags(et.flags);
-    setLog((prev) => [...et.logs, ...prev]);
-
-    // nuove opzioni
-    if (et.player.hp <= 0) {
-      setPhase("GAMEOVER");
-      setLog((prev) => ["Sei stato sconfitto... 💀", ...prev]);
-    } else {
-      setOptions(pickTwoRandom(deck));
-    }
-  }
-
-  function handleAbility(ab: Ability) {
-    if (!player || !enemy) return;
-    // se non ho stamina sufficiente → ignora
-    if (player.sta < ab.staminaCost) return;
-
-    const used = ab.use(player, enemy, flags);
-    setPlayer(used.player);
-    setEnemy(used.enemy);
-    setFlags(used.flags);
-    setLog((prev) => [...used.logs, ...prev]);
-
-    // se il nemico muore → nuovo goblin, niente contrattacco
-    if (used.enemyDiedFromAction) {
-      setLog((prev) => [`Hai sconfitto il ${enemy.name}!`, ...prev]);
-      setTimeout(nextGoblin, 250);
-      return;
-    }
-
-    // contrattacco nemico
-    const et = enemyTurn(used.enemy, used.player, used.flags);
-    setPlayer(et.player);
-    setFlags(et.flags);
-    setLog((prev) => [...et.logs, ...prev]);
-
-    if (et.player.hp <= 0) {
-      setPhase("GAMEOVER");
-      setLog((prev) => ["Sei stato sconfitto... 💀", ...prev]);
-    } else {
-      setOptions(pickTwoRandom(deck));
-    }
+  // Creo il combattimento quando si entra nello step "combattimento"
+  const combatRef = useRef<ReturnType<typeof createCombatFromClass> | null>(null);
+  if (step === "combattimento" && !combatRef.current) {
+    combatRef.current = createCombatFromClass(nomeGiocatore, nemico, {
+      staminaStart: 3,
+      handSize: 3,
+    });
   }
 
   return (
-    <main className="min-h-screen flex flex-col items-center gap-6 p-6">
-      <h1 className="text-3xl font-bold">GDR Testuale — Sistema Stamina</h1>
-
-      {phase === "READY" && (
-        <section className="w-full max-w-xl p-4 border rounded-2xl space-y-4">
-          <p className="opacity-80">
-            Personaggio: <b>Guerriero</b> — ATK 5 • DEF 10 • HP 12 • Stamina 4/6. <br />
-            Nemico: <b>Goblin</b> — ATK 2 • DEF 2 • HP 6. <br />
-            Hit 75% • Critico 5% • Riposa: +3 Stamina. Le abilità consumano stamina.
-          </p>
-          <button
-            className="px-4 py-2 rounded-xl bg-blue-600 text-white hover:bg-blue-700"
-            onClick={startBattle}
-          >
-            Inizia Battaglia
-          </button>
-        </section>
+    <main style={{ padding: 24, maxWidth: 1000, margin: "0 auto" }}>
+      {step === "scelta" && (
+        <SelezioneClasse
+          nomeGiocatore={nomeGiocatore}
+          onChangeNome={setNomeGiocatore}
+          onConferma={() => setStep("combattimento")}
+        />
       )}
 
-      {phase !== "READY" && player && enemy && (
-        <section className="w-full max-w-5xl grid grid-cols-1 md:grid-cols-3 gap-6">
-          {/* Player */}
-          <div className="p-4 border rounded-2xl">
-            <h3 className="text-lg font-semibold mb-2">Tu</h3>
-            <p><b>Classe:</b> {player.name}</p>
-            <p><b>ATK:</b> {player.atk} • <b>DEF:</b> {player.def}</p>
-            <p><b>HP:</b> {player.hp}/{player.maxHp}</p>
-            <div className="w-full bg-gray-200 h-2 rounded mt-2">
-              <div className="h-2 bg-green-600 rounded" style={{ width: `${(player.hp / player.maxHp) * 100}%` }} />
-            </div>
-            <p className="mt-2"><b>Stamina:</b> {player.sta}/{player.maxSta}</p>
-            <div className="w-full bg-gray-200 h-2 rounded mt-2">
-              <div className="h-2 bg-yellow-500 rounded" style={{ width: `${(player.sta / player.maxSta) * 100}%` }} />
-            </div>
-
-            {/* Azioni */}
-            {phase === "BATTLE" && (
-              <div className="mt-4 grid grid-cols-1 gap-2">
-                <button
-                  className="w-full px-4 py-2 rounded-xl bg-slate-700 text-white hover:bg-slate-800"
-                  onClick={doRest}
-                >
-                  Riposa (+3 Stamina)
-                </button>
-
-                {options.map((ab) => {
-                  const disabled = player.sta < ab.staminaCost;
-                  return (
-                    <button
-                      key={ab.key}
-                      disabled={disabled}
-                      onClick={() => handleAbility(ab)}
-                      className={`w-full px-4 py-2 rounded-xl text-white ${
-                        disabled
-                          ? "bg-gray-400 cursor-not-allowed"
-                          : "bg-amber-600 hover:bg-amber-700"
-                      }`}
-                      title={disabled ? "Stamina insufficiente" : ""}
-                    >
-                      {ab.name} — {ab.staminaCost} STA
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-
-            {phase === "GAMEOVER" && (
-              <button
-                className="mt-4 w-full px-4 py-2 rounded-xl bg-rose-600 text-white hover:bg-rose-700"
-                onClick={resetGame}
-              >
-                Rigioca
-              </button>
-            )}
-          </div>
-
-          {/* Enemy */}
-          <div className="p-4 border rounded-2xl">
-            <h3 className="text-lg font-semibold mb-2">Nemico</h3>
-            <p><b>Nome:</b> {enemy.name}</p>
-            <p><b>ATK:</b> {enemy.atk} • <b>DEF:</b> {enemy.def}</p>
-            <p><b>HP:</b> {enemy.hp}/{enemy.maxHp}</p>
-            <div className="w-full bg-gray-200 h-2 rounded mt-2">
-              <div className="h-2 bg-red-600 rounded" style={{ width: `${(enemy.hp / enemy.maxHp) * 100}%` }} />
-            </div>
-
-            {(flags.playerShieldUp || flags.enemyStunned) && (
-              <div className="mt-3 text-sm">
-                {flags.playerShieldUp && <div>🛡️ Scudo alzato: annullerai il prossimo danno.</div>}
-                {flags.enemyStunned && <div>🌀 Nemico stordito: salterà il prossimo attacco.</div>}
-              </div>
-            )}
-          </div>
-
-          {/* Log */}
-          <div className="p-4 border rounded-2xl md:col-span-1">
-            <h3 className="text-lg font-semibold mb-2">Log</h3>
-            <ul className="space-y-1 max-h-80 overflow-auto text-sm">
-              {log.map((entry, i) => (
-                <li key={i}>• {entry}</li>
-              ))}
-            </ul>
-          </div>
-        </section>
+      {step === "combattimento" && combatRef.current && (
+        <SchermataCombattimento combat={combatRef.current} onRestart={() => {
+          combatRef.current = null;
+          setStep("scelta");
+        }} />
       )}
     </main>
+  );
+}
+
+// ————————————————————————————————————————
+// UI: Selezione Classe (per ora solo Guerriero)
+// ————————————————————————————————————————
+function SelezioneClasse({
+  nomeGiocatore,
+  onChangeNome,
+  onConferma,
+}: {
+  nomeGiocatore: string;
+  onChangeNome: (v: string) => void;
+  onConferma: () => void;
+}) {
+  return (
+    <section style={{ display: "grid", gap: 16 }}>
+      <h1>Seleziona la classe</h1>
+
+      <label style={{ display: "grid", gap: 6, maxWidth: 360 }}>
+        <span>Nome del personaggio</span>
+        <input
+          value={nomeGiocatore}
+          onChange={(e) => onChangeNome(e.target.value)}
+          placeholder="Inserisci un nome"
+          style={{
+            padding: "10px 12px",
+            borderRadius: 8,
+            border: "1px solid #2a2f3a",
+            background: "#0f1115",
+            color: "white",
+          }}
+        />
+      </label>
+
+      {/* Carta-classe: Guerriero */}
+      <div
+        style={{
+          display: "grid",
+          gap: 8,
+          maxWidth: 420,
+          padding: 16,
+          border: "1px solid #2a2f3a",
+          borderRadius: 12,
+          background: "#151922",
+        }}
+      >
+        <div style={{ fontSize: 18, fontWeight: 700 }}>Guerriero</div>
+        <div style={{ opacity: 0.85 }}>
+          Un combattente robusto, specializzato in attacchi fisici e difesa.
+        </div>
+        <ul style={{ margin: "8px 0 0 16px", opacity: 0.85 }}>
+          <li>HP: 30 • ATK: 5</li>
+          <li>Mazzo iniziale: 3× Colpo di Spada, 2× Difesa, 1× Cura, 1× Riposo</li>
+        </ul>
+
+        <button
+          onClick={onConferma}
+          style={{
+            marginTop: 8,
+            padding: "10px 14px",
+            borderRadius: 8,
+            border: "1px solid #2a2f3a",
+            background: "#1f6feb",
+            color: "white",
+            fontWeight: 700,
+            cursor: "pointer",
+          }}
+        >
+          Inizia!
+        </button>
+      </div>
+    </section>
+  );
+}
+
+// ————————————————————————————————————————
+// UI: Schermata Combattimento
+// ————————————————————————————————————————
+function SchermataCombattimento({
+  combat,
+  onRestart,
+}: {
+  combat: ReturnType<typeof createCombatFromClass>;
+  onRestart: () => void;
+}) {
+  const rerender = () => {
+    // piccolo trucco: forzo un rerender aggiornando uno state locale
+    setTick((t) => t + 1);
+  };
+  const [tick, setTick] = useState(0);
+
+  const playableClass = (cost: number) =>
+    combat.state.stamina >= cost && !combat.isOver ? "card card-enter card--playable" : "card card-enter card--unplayable";
+
+  return (
+    <section style={{ display: "grid", gap: 16 }}>
+      <header style={{ display: "flex", gap: 16, alignItems: "center", flexWrap: "wrap" }}>
+        <StatPanel
+          titolo={combat.state.player.name}
+          hp={combat.state.player.hp}
+          hpMax={combat.state.player.hpMax}
+          def={combat.state.player.defense}
+          extraRight={`⚡ Stamina: ${combat.state.stamina}`}
+        />
+        <StatPanel
+          titolo={combat.state.enemy.name}
+          hp={combat.state.enemy.hp}
+          hpMax={combat.state.enemy.hpMax}
+          def={combat.state.enemy.defense}
+          extraRight={combat.state.enemy.stunned > 0 ? `💫 Stordito: ${combat.state.enemy.stunned}` : undefined}
+        />
+      </header>
+
+      {/* Mano */}
+      <div style={{ display: "flex", gap: 10, justifyContent: "center", minHeight: 190, flexWrap: "wrap" }}>
+        {combat.deck.hand.map((c) => (
+          <div
+            key={c.id + "-" + tick + "-" + Math.random()}
+            className={playableClass(c.cost)}
+            style={{ width: 200 }}
+            onClick={() => {
+              combat.playCard(c.id);
+              rerender();
+            }}
+          >
+            <div style={{ fontWeight: 700, marginBottom: 6 }}>{c.title}</div>
+            <div style={{ opacity: 0.8, fontSize: 12, marginBottom: 6 }}>Costo: {c.cost}</div>
+            <div style={{ fontSize: 12, minHeight: 40 }}>{c.description}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Controlli */}
+      <div style={{ display: "flex", gap: 8, justifyContent: "center" }}>
+        <button
+          onClick={() => {
+            combat.endTurn();
+            rerender();
+          }}
+          disabled={combat.isOver}
+          style={{
+            padding: "10px 14px",
+            borderRadius: 8,
+            border: "1px solid #2a2f3a",
+            background: combat.isOver ? "#394150" : "#22c55e",
+            color: "white",
+            fontWeight: 700,
+            cursor: combat.isOver ? "not-allowed" : "pointer",
+          }}
+        >
+          Fine turno
+        </button>
+
+        <button
+          onClick={onRestart}
+          style={{
+            padding: "10px 14px",
+            borderRadius: 8,
+            border: "1px solid #2a2f3a",
+            background: "#ef4444",
+            color: "white",
+            fontWeight: 700,
+            cursor: "pointer",
+          }}
+        >
+          Torna alla selezione
+        </button>
+      </div>
+
+      {/* Log */}
+      <div
+        style={{
+          marginTop: 8,
+          maxHeight: 200,
+          overflowY: "auto",
+          fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+          fontSize: 12,
+          padding: 12,
+          border: "1px solid #2a2f3a",
+          borderRadius: 8,
+          background: "#0f1115",
+        }}
+      >
+        {combat.log.map((l, i) => (
+          <div key={i}>{l}</div>
+        ))}
+      </div>
+
+      {/* Esito */}
+      {combat.isOver && (
+        <div style={{ textAlign: "center", fontWeight: 800, fontSize: 18 }}>
+          {combat.winner === "player"
+            ? "🏆 Vittoria!"
+            : combat.winner === "enemy"
+            ? "💀 Sconfitta..."
+            : "☠️ Pareggio fatale"}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function StatPanel({
+  titolo,
+  hp,
+  hpMax,
+  def,
+  extraRight,
+}: {
+  titolo: string;
+  hp: number;
+  hpMax: number;
+  def: number;
+  extraRight?: string;
+}) {
+  return (
+    <div
+      style={{
+        flex: "1 1 320px",
+        padding: 12,
+        border: "1px solid #2a2f3a",
+        borderRadius: 10,
+        background: "#0f1115",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        gap: 16,
+      }}
+    >
+      <div>
+        <div style={{ fontWeight: 800, marginBottom: 6 }}>{titolo}</div>
+        <div>❤️ {hp}/{hpMax} &nbsp;•&nbsp; 🛡️ {def}</div>
+      </div>
+      {extraRight && <div style={{ opacity: 0.9 }}>{extraRight}</div>}
+    </div>
   );
 }
