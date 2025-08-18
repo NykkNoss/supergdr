@@ -78,7 +78,7 @@ export default function Home() {
     }
   }
 
-  function useAbility(ab: Ability) {
+  function handleAbility(ab: Ability) {
     if (!player || !enemy) return;
     // se non ho stamina sufficiente → ignora
     if (player.sta < ab.staminaCost) return;
@@ -162,7 +162,7 @@ export default function Home() {
                     <button
                       key={ab.key}
                       disabled={disabled}
-                      onClick={() => useAbility(ab)}
+                      onClick={() => handleAbility(ab)}
                       className={`w-full px-4 py-2 rounded-xl text-white ${
                         disabled
                           ? "bg-gray-400 cursor-not-allowed"

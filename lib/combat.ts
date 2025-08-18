@@ -18,12 +18,12 @@ export type BattleFlags = {
 
 export type Log = string;
 
-// ===== Tuning (tutto modificabile qui) =====
+// ===== Tuning =====
 export const HIT_CHANCE = 0.75;         // % di colpire
 export const CRIT_CHANCE = 0.05;        // % critico base
 export const REST_STAMINA_GAIN = 3;     // stamina recuperata da Riposa
 
-// Guerriero base (puoi cambiare qui i numeri)
+// ===== Fighters base =====
 export function makePlayer(): Fighter {
   return {
     name: "Guerriero",
@@ -36,7 +36,6 @@ export function makePlayer(): Fighter {
   };
 }
 
-// Goblin semplice (AI basilare)
 export function makeGoblin(): Fighter {
   return {
     name: "Goblin",
@@ -54,8 +53,7 @@ export function roll(prob: number) {
   return Math.random() < prob;
 }
 
-// Danno base (per attacchi standard / modificati da abilità)
-// powerBonus è un flat bonus che simula "spinta" dell'abilità (es. Colpo di Spada +2)
+// Danno base
 export function computeHitAndDamage(
   attacker: Fighter,
   defender: Fighter,
@@ -83,7 +81,6 @@ export type Ability = {
   key: WarriorAbilityKey;
   name: string;
   staminaCost: number;
-  // Effetto: muta player/enemy/flags e ritorna i log
   use: (player: Fighter, enemy: Fighter, flags: BattleFlags) => {
     player: Fighter;
     enemy: Fighter;
@@ -102,7 +99,7 @@ export function warriorDeck(): Ability[] {
       use: (player, enemy, flags) => {
         const logs: Log[] = [];
         const res = computeHitAndDamage(player, enemy, { powerBonus: 2 });
-        let newEnemy = { ...enemy };
+        const newEnemy = { ...enemy };
         if (res.hit) {
           newEnemy.hp = Math.max(0, enemy.hp - res.dmg);
           logs.push(`Colpo di Spada! Infliggi ${res.dmg} danni${res.crit ? " (CRITICO!)" : ""}.`);
@@ -139,7 +136,7 @@ export function warriorDeck(): Ability[] {
       use: (player, enemy, flags) => {
         const logs: Log[] = [];
         const res = computeHitAndDamage(player, enemy, { critChance: 0.3 });
-        let newEnemy = { ...enemy };
+        const newEnemy = { ...enemy };
         if (res.hit) {
           newEnemy.hp = Math.max(0, enemy.hp - res.dmg);
           logs.push(`Finta e Colpo! Infliggi ${res.dmg} danni${res.crit ? " (CRITICO!)" : ""}.`);
@@ -214,8 +211,8 @@ export function enemyTurn(
   flags: BattleFlags
 ) {
   const logs: Log[] = [];
-  let newPlayer = { ...player };
-  let newFlags = { ...flags };
+  const newPlayer = { ...player };
+  const newFlags = { ...flags };
 
   if (flags.enemyStunned) {
     logs.push(`${enemy.name} è stordito e non attacca!`);
