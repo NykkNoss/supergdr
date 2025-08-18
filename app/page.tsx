@@ -1,103 +1,221 @@
-import Image from "next/image";
+"use client";
+import { useState } from "react";
+import {
+  Fighter,
+  BattleFlags,
+  makePlayer,
+  makeGoblin,
+  warriorDeck,
+  Ability,
+  pickTwoRandom,
+  restAction,
+  enemyTurn,
+} from "@/lib/combat";
 
 export default function Home() {
-  return (
-    <div className="font-sans grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="font-mono list-inside list-decimal text-sm/6 text-center sm:text-left">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] font-mono font-semibold px-1 py-0.5 rounded">
-              app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
+  const [phase, setPhase] = useState<"READY" | "BATTLE" | "GAMEOVER">("READY");
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+  const [player, setPlayer] = useState<Fighter | null>(null);
+  const [enemy, setEnemy] = useState<Fighter | null>(null);
+  const [flags, setFlags] = useState<BattleFlags>({
+    playerShieldUp: false,
+    enemyStunned: false,
+  });
+  const [log, setLog] = useState<string[]>([]);
+
+  // Mazzo abilità del Guerriero (array, non funzione!)
+  const deck: Ability[] = warriorDeck();
+
+  // Abilità pescate per il turno
+  const [options, setOptions] = useState<Ability[]>([]);
+
+  function startBattle() {
+    const p = makePlayer();
+    const e = makeGoblin();
+    setPlayer(p);
+    setEnemy(e);
+    setFlags({ playerShieldUp: false, enemyStunned: false });
+    setLog([`Entri in battaglia contro un ${e.name}!`]);
+    setOptions(pickTwoRandom(deck));
+    setPhase("BATTLE");
+  }
+
+  function nextGoblin() {
+    const e = makeGoblin();
+    setEnemy(e);
+    setFlags({ playerShieldUp: false, enemyStunned: false });
+    setLog((prev) => [`Arriva un nuovo ${e.name}!`, ...prev]);
+    setOptions(pickTwoRandom(deck));
+  }
+
+  function resetGame() {
+    setPhase("READY");
+    setPlayer(null);
+    setEnemy(null);
+    setFlags({ playerShieldUp: false, enemyStunned: false });
+    setLog([]);
+    setOptions([]);
+  }
+
+  function doRest() {
+    if (!player || !enemy) return;
+    const res = restAction(player);
+    setPlayer(res.player);
+    setLog((prev) => [...res.logs, ...prev]);
+
+    // turno nemico dopo il riposo
+    const et = enemyTurn(enemy, res.player, flags);
+    setPlayer(et.player);
+    setFlags(et.flags);
+    setLog((prev) => [...et.logs, ...prev]);
+
+    // nuove opzioni
+    if (et.player.hp <= 0) {
+      setPhase("GAMEOVER");
+      setLog((prev) => ["Sei stato sconfitto... 💀", ...prev]);
+    } else {
+      setOptions(pickTwoRandom(deck));
+    }
+  }
+
+  function useAbility(ab: Ability) {
+    if (!player || !enemy) return;
+    // se non ho stamina sufficiente → ignora
+    if (player.sta < ab.staminaCost) return;
+
+    const used = ab.use(player, enemy, flags);
+    setPlayer(used.player);
+    setEnemy(used.enemy);
+    setFlags(used.flags);
+    setLog((prev) => [...used.logs, ...prev]);
+
+    // se il nemico muore → nuovo goblin, niente contrattacco
+    if (used.enemyDiedFromAction) {
+      setLog((prev) => [`Hai sconfitto il ${enemy.name}!`, ...prev]);
+      setTimeout(nextGoblin, 250);
+      return;
+    }
+
+    // contrattacco nemico
+    const et = enemyTurn(used.enemy, used.player, used.flags);
+    setPlayer(et.player);
+    setFlags(et.flags);
+    setLog((prev) => [...et.logs, ...prev]);
+
+    if (et.player.hp <= 0) {
+      setPhase("GAMEOVER");
+      setLog((prev) => ["Sei stato sconfitto... 💀", ...prev]);
+    } else {
+      setOptions(pickTwoRandom(deck));
+    }
+  }
+
+  return (
+    <main className="min-h-screen flex flex-col items-center gap-6 p-6">
+      <h1 className="text-3xl font-bold">GDR Testuale — Sistema Stamina</h1>
+
+      {phase === "READY" && (
+        <section className="w-full max-w-xl p-4 border rounded-2xl space-y-4">
+          <p className="opacity-80">
+            Personaggio: <b>Guerriero</b> — ATK 5 • DEF 10 • HP 12 • Stamina 4/6. <br />
+            Nemico: <b>Goblin</b> — ATK 2 • DEF 2 • HP 6. <br />
+            Hit 75% • Critico 5% • Riposa: +3 Stamina. Le abilità consumano stamina.
+          </p>
+          <button
+            className="px-4 py-2 rounded-xl bg-blue-600 text-white hover:bg-blue-700"
+            onClick={startBattle}
           >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
-        </div>
-      </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
-    </div>
+            Inizia Battaglia
+          </button>
+        </section>
+      )}
+
+      {phase !== "READY" && player && enemy && (
+        <section className="w-full max-w-5xl grid grid-cols-1 md:grid-cols-3 gap-6">
+          {/* Player */}
+          <div className="p-4 border rounded-2xl">
+            <h3 className="text-lg font-semibold mb-2">Tu</h3>
+            <p><b>Classe:</b> {player.name}</p>
+            <p><b>ATK:</b> {player.atk} • <b>DEF:</b> {player.def}</p>
+            <p><b>HP:</b> {player.hp}/{player.maxHp}</p>
+            <div className="w-full bg-gray-200 h-2 rounded mt-2">
+              <div className="h-2 bg-green-600 rounded" style={{ width: `${(player.hp / player.maxHp) * 100}%` }} />
+            </div>
+            <p className="mt-2"><b>Stamina:</b> {player.sta}/{player.maxSta}</p>
+            <div className="w-full bg-gray-200 h-2 rounded mt-2">
+              <div className="h-2 bg-yellow-500 rounded" style={{ width: `${(player.sta / player.maxSta) * 100}%` }} />
+            </div>
+
+            {/* Azioni */}
+            {phase === "BATTLE" && (
+              <div className="mt-4 grid grid-cols-1 gap-2">
+                <button
+                  className="w-full px-4 py-2 rounded-xl bg-slate-700 text-white hover:bg-slate-800"
+                  onClick={doRest}
+                >
+                  Riposa (+3 Stamina)
+                </button>
+
+                {options.map((ab) => {
+                  const disabled = player.sta < ab.staminaCost;
+                  return (
+                    <button
+                      key={ab.key}
+                      disabled={disabled}
+                      onClick={() => useAbility(ab)}
+                      className={`w-full px-4 py-2 rounded-xl text-white ${
+                        disabled
+                          ? "bg-gray-400 cursor-not-allowed"
+                          : "bg-amber-600 hover:bg-amber-700"
+                      }`}
+                      title={disabled ? "Stamina insufficiente" : ""}
+                    >
+                      {ab.name} — {ab.staminaCost} STA
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
+            {phase === "GAMEOVER" && (
+              <button
+                className="mt-4 w-full px-4 py-2 rounded-xl bg-rose-600 text-white hover:bg-rose-700"
+                onClick={resetGame}
+              >
+                Rigioca
+              </button>
+            )}
+          </div>
+
+          {/* Enemy */}
+          <div className="p-4 border rounded-2xl">
+            <h3 className="text-lg font-semibold mb-2">Nemico</h3>
+            <p><b>Nome:</b> {enemy.name}</p>
+            <p><b>ATK:</b> {enemy.atk} • <b>DEF:</b> {enemy.def}</p>
+            <p><b>HP:</b> {enemy.hp}/{enemy.maxHp}</p>
+            <div className="w-full bg-gray-200 h-2 rounded mt-2">
+              <div className="h-2 bg-red-600 rounded" style={{ width: `${(enemy.hp / enemy.maxHp) * 100}%` }} />
+            </div>
+
+            {(flags.playerShieldUp || flags.enemyStunned) && (
+              <div className="mt-3 text-sm">
+                {flags.playerShieldUp && <div>🛡️ Scudo alzato: annullerai il prossimo danno.</div>}
+                {flags.enemyStunned && <div>🌀 Nemico stordito: salterà il prossimo attacco.</div>}
+              </div>
+            )}
+          </div>
+
+          {/* Log */}
+          <div className="p-4 border rounded-2xl md:col-span-1">
+            <h3 className="text-lg font-semibold mb-2">Log</h3>
+            <ul className="space-y-1 max-h-80 overflow-auto text-sm">
+              {log.map((entry, i) => (
+                <li key={i}>• {entry}</li>
+              ))}
+            </ul>
+          </div>
+        </section>
+      )}
+    </main>
   );
 }
