@@ -1,4 +1,4 @@
-import { Fighter } from "./combat;
+import { Fighter } from "./combat";
 import { Card } from "./carte";
 
 export type ClasseId = "guerriero"; // in futuro aggiungiamo "mago" ecc.
