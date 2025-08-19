@@ -1,6 +1,6 @@
 // /lib/effetti.ts
 import { Card } from "./carte";
-import { BattleState, EffectResult } from "./combat";
+import type { BattleState, EffectResult } from "./combat";
 
 const clamp = (n: number, min: number, max: number) => Math.max(min, Math.min(max, n));
 

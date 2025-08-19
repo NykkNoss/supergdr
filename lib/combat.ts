@@ -20,8 +20,13 @@ export type Fighter = {
 export type BattleState = {
   player: Fighter;
   enemy: Fighter;
+  hand: Card[];
+  drawPile: Card[];
+  discardPile: Card[];
   stamina: number;
   staminaMax: number;
+   turn: "player" | "enemy";
+  log: string[];
 };
 
 // ======== Tipi interni al combat ========
