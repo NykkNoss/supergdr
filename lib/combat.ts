@@ -3,7 +3,7 @@
 
 import { CARTE, Card } from "./carte";
 import { applyCardEffect } from "./effetti";
-import { BattleState, Fighter } from "./tipi-combattimento";
+import { BattleState, Fighter } from "./combat";
 import { GUERRIERO } from "./classi";
 
 // ======== Tipi interni al combat ========
