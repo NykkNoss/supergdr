@@ -3,16 +3,34 @@
 
 import { CARTE, Card } from "./carte";
 import { applyCardEffect } from "./effetti";
-import { BattleState, Fighter } from "./combat";
 import { GUERRIERO } from "./classi";
+
+// ======== Tipi esportati (usabili anche in app/page.tsx) ========
+
+export type Fighter = {
+  id: string;
+  name: string;
+  hp: number;
+  hpMax: number;
+  atk: number;
+  defense: number;
+  stunned: number; // turni di stordimento rimanenti
+};
+
+export type BattleState = {
+  player: Fighter;
+  enemy: Fighter;
+  stamina: number;
+  staminaMax: number;
+};
 
 // ======== Tipi interni al combat ========
 
 export type DeckState = {
-  drawPile: Card[];     // pescate da qui
-  discardPile: Card[];  // scarti qui
-  hand: Card[];         // carte in mano
-  handSize: number;     // dimensione mano (es. 3 o 5)
+  drawPile: Card[];    // pescate da qui
+  discardPile: Card[]; // scarti qui
+  hand: Card[];        // carte in mano
+  handSize: number;    // dimensione mano (es. 3 o 5)
 };
 
 export type CombatLog = string[];
@@ -21,7 +39,7 @@ export type Combat = {
   state: BattleState;
   deck: DeckState;
   log: CombatLog;
-  isOver: boolean;        // true se qualcuno è a 0 HP
+  isOver: boolean;               // true se qualcuno è a 0 HP
   winner: "player" | "enemy" | null;
   // API
   draw: (n?: number) => void;
@@ -56,20 +74,15 @@ function checkGameOver(state: BattleState): { over: boolean; winner: "player" | 
   return { over: false, winner: null };
 }
 
-
 // ======== Inizializzazione ========
 
 export function createCombatFromClass(
   playerName: string,
   enemy: Fighter,
-  options?: {
-    staminaStart?: number;
-    handSize?: number;
-  }
-): Combat {
-  // Per ora scegliamo il Guerriero come richiesto. Più avanti collegheremo la scelta in app/page.ts
-  const base = GUERRIERO.baseStats;
-
+  classe: Classe,                 
+  options?: { handSize?: number } 
+) {
+  const base = classe.baseStats;
   const player: Fighter = {
     id: "player",
     name: playerName,
@@ -80,8 +93,16 @@ export function createCombatFromClass(
     stunned: base.stunned,
   };
 
-  const stamina = options?.staminaStart ?? 3;
-  const handSize = options?.handSize ?? 3;
+  // Stamina iniziale presa dalla classe
+const stamina = classe.staminaBase; 
+const handSize = options?.handSize ?? 3;
+// stamina massima presa dalla classe
+const state: BattleState = {
+  player,
+  enemy,
+  stamina,
+  staminaMax: classe.staminaBase, // Guerriero
+};
 
   // Crea il mazzo dalla classe (mapping degli id alle Card)
   const startDeck: Card[] =
@@ -96,11 +117,6 @@ export function createCombatFromClass(
     handSize,
   };
 
-  const state: BattleState = {
-    player,
-    enemy,
-    stamina,
-  };
 
   const combat: Combat = {
     state,
@@ -121,8 +137,7 @@ export function createCombatFromClass(
         if (!card) break;
         this.deck.hand.push(card);
       }
-      // animazione: quando peschi, le carte in mano possono comparire con la classe CSS "card-enter-from-bottom"
-      // (vedi esempio UI in basso)
+      // animazione: quando peschi, le carte in mano possono comparire con la classe CSS "card-enter"
     },
 
     canPlay(card: Card) {
@@ -152,15 +167,14 @@ export function createCombatFromClass(
       this.deck.hand.splice(idx, 1);
 
       // Controlla se qualcuno è morto
-const result = checkGameOver(this.state);
-if (result.over) {
-  this.isOver = true;
-  this.winner = result.winner;
-  if (this.winner === "player") this.log.push(`🏆 ${this.state.player.name} ha sconfitto ${this.state.enemy.name}!`);
-  else if (this.winner === "enemy") this.log.push(`💀 ${this.state.player.name} è stato sconfitto.`);
-  else this.log.push(`☠️ Siete caduti entrambi.`);
-}
-
+      const result = checkGameOver(this.state);
+      if (result.over) {
+        this.isOver = true;
+        this.winner = result.winner;
+        if (this.winner === "player") this.log.push(`🏆 ${this.state.player.name} ha sconfitto ${this.state.enemy.name}!`);
+        else if (this.winner === "enemy") this.log.push(`💀 ${this.state.player.name} è stato sconfitto.`);
+        else this.log.push(`☠️ Siete caduti entrambi.`);
+      }
     },
 
     endTurn() {
@@ -173,7 +187,6 @@ if (result.over) {
         this.log.push(`💫 ${this.state.enemy.name} è stordito e salta il turno.`);
       } else {
         // Nemico attacca con il suo ATK base
-        // Simuliamo una "carta attacco" equivalente al suo atk
         const raw = Math.max(0, Math.floor(this.state.enemy.atk));
         if (raw > 0) {
           // Danno al player rispettando la difesa
@@ -193,30 +206,24 @@ if (result.over) {
       }
 
       // Controllo morte dopo l’azione nemico
-const result = checkGameOver(this.state);
-if (result.over) {
-  this.isOver = true;
-  this.winner = result.winner;
-  if (this.winner === "player") this.log.push(`🏆 ${this.state.player.name} ha sconfitto ${this.state.enemy.name}!`);
-  else if (this.winner === "enemy") this.log.push(`💀 ${this.state.player.name} è stato sconfitto.`);
-  else this.log.push(`☠️ Siete caduti entrambi.`);
-  return;
-}
-
+      const result = checkGameOver(this.state);
+      if (result.over) {
+        this.isOver = true;
+        this.winner = result.winner;
+        if (this.winner === "player") this.log.push(`🏆 ${this.state.player.name} ha sconfitto ${this.state.enemy.name}!`);
+        else if (this.winner === "enemy") this.log.push(`💀 ${this.state.player.name} è stato sconfitto.`);
+        else this.log.push(`☠️ Siete caduti entrambi.`);
+        return;
+      }
 
       // ——— Preparazione nuovo turno del GIOCATORE ———
-      // Rigeneri un po' di stamina (scegli tu quanto: qui +3 base)
-      this.state.stamina += 3;
+      const regen = 3;
+this.state.stamina = Math.min(this.state.stamina + regen, this.state.staminaMax);
 
-      // Pesca fino a rimpiazzare la mano (clear mano e pesca nuova mano)
-      // (Se preferisci la persistenza di mano & pescate incrementali, modifica questa parte)
+      // Pesca nuova mano
       this.deck.discardPile.push(...this.deck.hand);
       this.deck.hand = [];
       this.draw(this.deck.handSize);
-
-      // Colorazione "si può/non si può" è demandata alla UI:
-      //  - se this.state.stamina >= card.cost => "playable"
-      //  - altrimenti => "unplayable"
     },
   };
 

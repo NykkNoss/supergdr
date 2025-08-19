@@ -42,15 +42,6 @@ function addStun(target: "player" | "enemy", turns: number, state: BattleState) 
   return t.stunned;
 }
 
-/**
- * Applica l’effetto della carta.
- * Regole che hai richiesto:
- * - attacco: infligge danno pari a `value` al nemico
- * - cura: cura il giocatore di `value`
- * - difesa: aggiunge `value` alla difesa del giocatore
- * - stordimento: stordisce il nemico per `value` turni
- * - riposa: recupera `value` stamina
- */
 export function applyCardEffect(card: Card, state: BattleState): EffectResult {
   const log: string[] = [];
 
@@ -87,11 +78,15 @@ export function applyCardEffect(card: Card, state: BattleState): EffectResult {
       break;
     }
 
-    case "riposa": {
-      state.stamina += Math.floor(card.value);
-      log.push(`${card.title}: recuperi ${Math.floor(card.value)} stamina.`);
-      break;
-    }
+case "riposa": {
+  const gain = Math.floor(card.value);
+  const before = state.stamina;
+  state.stamina = Math.min(state.stamina + gain, state.staminaMax); // 👈 cap
+  const gained = state.stamina - before;
+  log.push(`${card.title}: recuperi ${gained} stamina${gained < gain ? " (cap raggiunto)" : ""}.`);
+  break;
+}
+
 
     default:
       // Non dovrebbe accadere: i tipi limitano i valori validi
