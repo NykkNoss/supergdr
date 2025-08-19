@@ -3,7 +3,7 @@
 
 import { CARTE, Card } from "./carte";
 import { applyCardEffect } from "./effetti";
-import { GUERRIERO } from "./classi";
+import type { Classe } from "./classi";
 
 // ======== Tipi esportati (usabili anche in app/page.tsx) ========
 
@@ -106,7 +106,7 @@ const state: BattleState = {
 
   // Crea il mazzo dalla classe (mapping degli id alle Card)
   const startDeck: Card[] =
-    GUERRIERO.mazzoIniziale
+    classe.mazzoIniziale
       .map((id) => getCardById(id))
       .filter((c): c is Card => !!c);
 
