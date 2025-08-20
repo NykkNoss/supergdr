@@ -1,8 +1,7 @@
 // lib/nemici.ts
-import { Parameters } from "./combat";
+import type { createCombatFromClass } from "./combat";
 
-// Tipo nemico compatibile con createCombatFromClass
-export type Nemico = Parameters<typeof import("./combat").createCombatFromClass>[1];
+export type Nemico = Parameters<typeof createCombatFromClass>[1];
 
 // Lista nemici disponibili
 export const NEMICI: Nemico[] = [
