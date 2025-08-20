@@ -1,7 +1,7 @@
-import { Fighter } from "./combat";
-import { Card } from "./carte";
+import type { Fighter } from "./combat";
+import type { Card } from "./carte";
 
-export type ClasseId = "guerriero"; // in futuro aggiungiamo altre classi
+export type ClasseId = "guerriero" | "elementalista";
 
 export interface Classe {
   id: ClasseId;
@@ -16,13 +16,13 @@ export interface Classe {
 export const GUERRIERO: Classe = {
   id: "guerriero", // ID di questa classe non cambiare
   nome: "Guerriero", // cambiare qui il nome della classe per non rompere i collegamenti
-  descrizione: "Un combattente robusto, specializzato in attacchi fisici e difesa.",
+  descrizione: "Un combattetente corpo a corpo, dotato di armatura",
   baseStats: {
     hp: 30,
     hpMax: 30,
     atk: 5, 
-    defense: 0,
-    stunned: 0, // non ancora implementato
+    defense: 10,
+    stunned: 0, 
   },
   staminaBase: 6, 
   mazzoIniziale: [
@@ -31,9 +31,28 @@ export const GUERRIERO: Classe = {
     "poz_cura",
   ],
 };
-
+// Elementalista
+export const ELEMENTALISTA: Classe = {
+  id: "elementalista", // ID di questa classe non cambiare
+  nome: "Elementalista", // cambiare qui il nome della classe per non rompere i collegamenti
+  descrizione: "Un mago specializzato nel controllo degli elementi",
+  baseStats: {
+    hp: 15,
+    hpMax: 15,
+    atk: 5, 
+    defense: 0,
+    stunned: 0,
+  },
+  staminaBase: 10, 
+  mazzoIniziale: [
+    "fiammata", "fiammata", "fiammata", "fiammata",
+    "armatura", "armatura",
+    "vapore",
+  ],
+};
 
 // Collezione di classi (utile se poi ne aggiungiamo altre)
-export const CLASSI: Record<ClasseId, Classe> = {
+export const CLASSI = {
   guerriero: GUERRIERO,
-};
+  elementalista: ELEMENTALISTA,
+} as const satisfies Record<string, Classe>;
