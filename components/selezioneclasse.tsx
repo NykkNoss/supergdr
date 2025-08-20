@@ -7,14 +7,13 @@ import { CLASSI } from "@/lib/classi";
 type Props = {
   nomeGiocatore: string;
   onChangeNome: (v: string) => void;
-  onConferma: (classeId: ClasseId) => void; // ← passa SOLO l'id
+  onConferma: (classeId: ClasseId) => void;
   defaultClassId?: ClasseId;
 };
 
 function deckCountLines(ids: string[]): string[] {
   const m = new Map<string, number>();
   for (const id of ids ?? []) m.set(id, (m.get(id) ?? 0) + 1);
-  // Mostriamo gli ID (niente CARTE -> niente cicli); se vuoi, poi mapperemo ai titoli
   return [...m.entries()].map(([id, n]) => `${n}× ${id}`);
 }
 
@@ -24,14 +23,17 @@ export function SelezioneClasse({
   onConferma,
   defaultClassId,
 }: Props) {
+  // hook sempre chiamati in cima
   const classi = useMemo(() => Object.values(CLASSI) as Classe[], []);
+  const firstId = (defaultClassId ?? classi[0]?.id) as ClasseId;
+  const [selectedId, setSelectedId] = useState<ClasseId>(firstId);
+
+  const selected = classi.find((c) => c.id === selectedId) ?? classi[0];
+
+  // fallback dopo gli hook
   if (!classi.length) {
     return <div style={{ color: "salmon" }}>Nessuna classe trovata.</div>;
   }
-
-  const firstId = (defaultClassId ?? classi[0].id) as ClasseId;
-  const [selectedId, setSelectedId] = useState<ClasseId>(firstId);
-  const selected = classi.find((c) => c.id === selectedId) ?? classi[0];
 
   return (
     <section style={{ display: "grid", gap: 16 }}>
@@ -85,7 +87,9 @@ export function SelezioneClasse({
                 <div style={{ opacity: 0.85 }}>{c.descrizione}</div>
               )}
               <ul style={{ margin: "4px 0 0 16px", opacity: 0.85 }}>
-                <li>HP: {c.baseStats.hpMax} • ATK: {c.baseStats.atk}</li>
+                <li>
+                  HP: {c.baseStats.hpMax} • ATK: {c.baseStats.atk}
+                </li>
                 {!!deckList.length && (
                   <li>
                     Mazzo iniziale:
