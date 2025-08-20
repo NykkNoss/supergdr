@@ -1,11 +1,11 @@
 // /lib/combat.ts
 // Engine del combattimento: gestione mazzo, mano, stamina, turni e applicazione effetti.
 
-import { CARTE, Card } from "./carte";
+import { CARTE, type Card } from "./carte";
 import { applyCardEffect } from "./effetti";
 import type { Classe } from "./classi";
 
-// ======== Tipi esportati (usabili anche in app/page.tsx) ========
+// ========= Tipi esportati (usabili anche in app/page.tsx e in effetti.ts) =========
 
 export type Fighter = {
   id: string;
@@ -17,25 +17,37 @@ export type Fighter = {
   stunned: number; // turni di stordimento rimanenti
 };
 
+/**
+ * Stato "core" del combattimento, senza le pile (che sono nel DeckState).
+ */
 export type BattleState = {
   player: Fighter;
   enemy: Fighter;
-  hand: Card[];
-  drawPile: Card[];
-  discardPile: Card[];
   stamina: number;
   staminaMax: number;
-   turn: "player" | "enemy";
-  log: string[];
 };
 
-// ======== Tipi interni al combat ========
+/**
+ * Risultato di un effetto carta.
+ * - `state` è obbligatorio (così puoi fare this.state = res.state senza errori)
+ * - `log` è obbligatorio (così puoi fare this.log.push(...res.log) senza errori)
+ * - opzionali: drawCards, endTurn (se l'effetto forza pesca o fine turno)
+ */
+export type EffectResult = {
+  state: BattleState;
+  log: string[];
+  drawCards?: number;
+  endTurn?: boolean;
+  error?: string;
+};
+
+// ========= Tipi interni al combat =========
 
 export type DeckState = {
   drawPile: Card[];    // pescate da qui
   discardPile: Card[]; // scarti qui
   hand: Card[];        // carte in mano
-  handSize: number;    // dimensione mano (es. 3 o 5)
+  handSize: number;
 };
 
 export type CombatLog = string[];
@@ -53,7 +65,7 @@ export type Combat = {
   endTurn: () => void;
 };
 
-// ======== Utility ========
+// ========= Utility =========
 
 function randShuffle<T>(arr: T[]): T[] {
   const a = [...arr];
@@ -79,13 +91,13 @@ function checkGameOver(state: BattleState): { over: boolean; winner: "player" | 
   return { over: false, winner: null };
 }
 
-// ======== Inizializzazione ========
+// ========= Inizializzazione =========
 
 export function createCombatFromClass(
   playerName: string,
   enemy: Fighter,
-  classe: Classe,                 
-  options?: { handSize?: number } 
+  classe: Classe,
+  options?: { handSize?: number }
 ) {
   const base = classe.baseStats;
   const player: Fighter = {
@@ -98,22 +110,25 @@ export function createCombatFromClass(
     stunned: base.stunned,
   };
 
-  // Stamina iniziale presa dalla classe
-const stamina = classe.staminaBase; 
-const handSize = options?.handSize ?? 3;
-// stamina massima presa dalla classe
-const state: BattleState = {
-  player,
-  enemy,
-  stamina,
-  staminaMax: classe.staminaBase, // Guerriero
-};
+  // Stamina iniziale/massima presa dalla classe (coerente con il tuo codice)
+  const staminaMax = classe.staminaBase;
+  const stamina = classe.staminaBase;
+
+  // Dimensione mano
+  const handSize = options?.handSize ?? 3;
+
+  // Stato "core" (solo campi di BattleState)
+  const state: BattleState = {
+    player,
+    enemy,
+    stamina,
+    staminaMax,
+  };
 
   // Crea il mazzo dalla classe (mapping degli id alle Card)
-  const startDeck: Card[] =
-    classe.mazzoIniziale
-      .map((id) => getCardById(id))
-      .filter((c): c is Card => !!c);
+  const startDeck: Card[] = classe.mazzoIniziale
+    .map((id) => getCardById(id))
+    .filter((c): c is Card => !!c);
 
   const deck: DeckState = {
     drawPile: randShuffle(startDeck),
@@ -121,7 +136,6 @@ const state: BattleState = {
     hand: [],
     handSize,
   };
-
 
   const combat: Combat = {
     state,
@@ -163,9 +177,15 @@ const state: BattleState = {
       }
 
       // Applica effetto (usa effetti.ts)
-      const res = applyCardEffect(card, this.state);
+      const res = applyCardEffect(card, this.state) as EffectResult;
+      // Aggiorna stato e log (ora res.state e res.log sono SEMPRE presenti)
       this.state = res.state;
-      this.log.push(...res.log);
+      if (res.log.length) this.log.push(...res.log);
+
+      // Forza pescate se l'effetto lo richiede
+      if (typeof res.drawCards === "number" && res.drawCards > 0) {
+        this.draw(res.drawCards);
+      }
 
       // Sposta la carta negli scarti
       this.deck.discardPile.push(card);
@@ -179,7 +199,11 @@ const state: BattleState = {
         if (this.winner === "player") this.log.push(`🏆 ${this.state.player.name} ha sconfitto ${this.state.enemy.name}!`);
         else if (this.winner === "enemy") this.log.push(`💀 ${this.state.player.name} è stato sconfitto.`);
         else this.log.push(`☠️ Siete caduti entrambi.`);
+        return;
       }
+
+      // Se l'effetto forza la fine turno
+      if (res.endTurn) this.endTurn();
     },
 
     endTurn() {
@@ -223,9 +247,9 @@ const state: BattleState = {
 
       // ——— Preparazione nuovo turno del GIOCATORE ———
       const regen = 3;
-this.state.stamina = Math.min(this.state.stamina + regen, this.state.staminaMax);
+      this.state.stamina = Math.min(this.state.stamina + regen, this.state.staminaMax);
 
-      // Pesca nuova mano
+      // Pesca nuova mano: scarta la mano attuale e ripesca
       this.deck.discardPile.push(...this.deck.hand);
       this.deck.hand = [];
       this.draw(this.deck.handSize);
