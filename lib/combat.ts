@@ -14,7 +14,7 @@ export type Fighter = {
   hpMax: number;
   atk: number;
   defense: number;
-  stunned: number; // turni di stordimento rimanenti
+  stunned: number;
 };
 
 /**
@@ -65,12 +65,32 @@ export type Combat = {
   endTurn: () => void;
 };
 
-// ========= Utility =========
+// ========= Utility robuste =========
+
+function deepClone<T>(v: T): T {
+  // Evita mutazioni condivise tra partite (soprattutto su mobile/StrictMode)
+  if (typeof structuredClone === "function") return structuredClone(v);
+  return JSON.parse(JSON.stringify(v));
+}
+
+function toInt(n: unknown, fallback = 0): number {
+  const v =
+    typeof n === "string"
+      ? Number.parseInt(n as string, 10)
+      : typeof n === "number"
+      ? n
+      : Number(n);
+  return Number.isFinite(v) ? v : fallback;
+}
+
+function clamp(n: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, n));
+}
 
 function randShuffle<T>(arr: T[]): T[] {
   const a = [...arr];
   for (let i = a.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
+    const j = (Math.random() * (i + 1)) | 0;
     [a[i], a[j]] = [a[j], a[i]];
   }
   return a;
@@ -80,15 +100,55 @@ function getCardById(id: string): Card | undefined {
   return CARTE.find((c) => c.id === id);
 }
 
-function clamp(n: number, min: number, max: number) {
-  return Math.max(min, Math.min(max, n));
-}
-
 function checkGameOver(state: BattleState): { over: boolean; winner: "player" | "enemy" | null } {
   if (state.player.hp <= 0 && state.enemy.hp <= 0) return { over: true, winner: null };
   if (state.player.hp <= 0) return { over: true, winner: "enemy" };
   if (state.enemy.hp <= 0) return { over: true, winner: "player" };
   return { over: false, winner: null };
+}
+
+function normalizeFighter(src: Partial<Fighter>): Fighter {
+  const hpMax = Math.max(1, toInt(src.hpMax ?? src.hp ?? 1, 1));
+  const id =
+    src.id ??
+    (typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `f_${Math.random().toString(36).slice(2)}`);
+
+  const name = src.name ?? "Sconosciuto";
+  const atk = toInt(src.atk, 0);
+  const defense = toInt(src.defense, 0);
+  const stunned = Math.max(0, toInt(src.stunned, 0));
+  // Se hp manca o non è valido → parte full life
+  const hp = clamp(toInt(src.hp, hpMax), 0, hpMax);
+
+  return { id, name, hpMax, hp, atk, defense, stunned };
+}
+
+function buildPlayerFromClasse(playerName: string, classe: Classe): Fighter {
+  // Tollerante: se qualche campo della classe fosse stringa, lo normalizziamo
+  const base = (classe as any).baseStats ?? {};
+  const hpMax = Math.max(1, toInt(base.hpMax ?? base.hp ?? 1, 1));
+
+  return normalizeFighter({
+    id: "player",
+    name: playerName,
+    hpMax,
+    hp: hpMax,
+    atk: toInt(base.atk, 0),
+    defense: toInt(base.defense, 0),
+    stunned: toInt(base.stunned, 0),
+  });
+}
+
+function buildDeckFromClasse(classe: Classe): Card[] {
+  // La classe fornisce un array di ID carta (mazzoIniziale)
+  const ids: unknown[] = (classe as any).mazzoIniziale ?? [];
+  const cards: Card[] = [];
+  for (const raw of ids) {
+    const id = String(raw);
+    const card = getCardById(id);
+    if (card) cards.push(card);
+  }
+  return cards;
 }
 
 // ========= Inizializzazione =========
@@ -98,37 +158,31 @@ export function createCombatFromClass(
   enemy: Fighter,
   classe: Classe,
   options?: { handSize?: number }
-) {
-  const base = classe.baseStats;
-  const player: Fighter = {
-    id: "player",
-    name: playerName,
-    hp: base.hp,
-    hpMax: base.hpMax,
-    atk: base.atk,
-    defense: base.defense,
-    stunned: base.stunned,
-  };
+): Combat {
+  // CLONA e normalizza per evitare mutazioni condivise e/o stringhe numeriche
+  const enemyBase = normalizeFighter(deepClone(enemy));
+  // Sempre full life all'inizio
+  enemyBase.hp = enemyBase.hpMax;
 
-  // Stamina iniziale/massima presa dalla classe (coerente con il tuo codice)
-  const staminaMax = classe.staminaBase;
-  const stamina = classe.staminaBase;
+  const playerBase = buildPlayerFromClasse(playerName, classe);
+
+  // Stamina iniziale/massima presa dalla classe (tollerante)
+  const staminaMax = Math.max(0, toInt((classe as any).staminaBase ?? 0, 0));
+  const stamina = staminaMax;
 
   // Dimensione mano
-  const handSize = options?.handSize ?? 3;
+  const handSize = Math.max(0, toInt(options?.handSize ?? 3, 3));
 
-  // Stato "core" (solo campi di BattleState)
+  // Stato "core"
   const state: BattleState = {
-    player,
-    enemy,
+    player: playerBase,
+    enemy: enemyBase,
     stamina,
     staminaMax,
   };
 
   // Crea il mazzo dalla classe (mapping degli id alle Card)
-  const startDeck: Card[] = classe.mazzoIniziale
-    .map((id) => getCardById(id))
-    .filter((c): c is Card => !!c);
+  const startDeck: Card[] = buildDeckFromClasse(classe);
 
   const deck: DeckState = {
     drawPile: randShuffle(startDeck),
@@ -146,7 +200,7 @@ export function createCombatFromClass(
 
     draw(n = deck.handSize) {
       for (let i = 0; i < n; i++) {
-        // se drawPile è vuota, rimescola gli scarti
+        // Se drawPile è vuota, rimescola gli scarti
         if (this.deck.drawPile.length === 0 && this.deck.discardPile.length > 0) {
           this.deck.drawPile = randShuffle(this.deck.discardPile);
           this.deck.discardPile = [];
@@ -156,11 +210,10 @@ export function createCombatFromClass(
         if (!card) break;
         this.deck.hand.push(card);
       }
-      // animazione: quando peschi, le carte in mano possono comparire con la classe CSS "card-enter"
+      // (Se usi animazioni CSS, qui puoi triggerare classi tipo "card-enter")
     },
 
     canPlay(card: Card) {
-      // Si può giocare se hai stamina sufficiente e il combattimento non è finito
       if (this.isOver) return false;
       return this.state.stamina >= card.cost;
     },
@@ -178,11 +231,12 @@ export function createCombatFromClass(
 
       // Applica effetto (usa effetti.ts)
       const res = applyCardEffect(card, this.state) as EffectResult;
-      // Aggiorna stato e log (ora res.state e res.log sono SEMPRE presenti)
-      this.state = res.state;
-      if (res.log.length) this.log.push(...res.log);
 
-      // Forza pescate se l'effetto lo richiede
+      // Aggiorna stato e log (res.state e res.log sono obbligatori per tipo)
+      this.state = res.state;
+      if (res.log?.length) this.log.push(...res.log);
+
+      // Pescate forzate dall'effetto
       if (typeof res.drawCards === "number" && res.drawCards > 0) {
         this.draw(res.drawCards);
       }
@@ -191,18 +245,18 @@ export function createCombatFromClass(
       this.deck.discardPile.push(card);
       this.deck.hand.splice(idx, 1);
 
-      // Controlla se qualcuno è morto
-      const result = checkGameOver(this.state);
-      if (result.over) {
+      // Controllo fine partita
+      const afterPlay = checkGameOver(this.state);
+      if (afterPlay.over) {
         this.isOver = true;
-        this.winner = result.winner;
+        this.winner = afterPlay.winner;
         if (this.winner === "player") this.log.push(`🏆 ${this.state.player.name} ha sconfitto ${this.state.enemy.name}!`);
         else if (this.winner === "enemy") this.log.push(`💀 ${this.state.player.name} è stato sconfitto.`);
         else this.log.push(`☠️ Siete caduti entrambi.`);
         return;
       }
 
-      // Se l'effetto forza la fine turno
+      // Fine turno forzata dall'effetto
       if (res.endTurn) this.endTurn();
     },
 
@@ -210,13 +264,11 @@ export function createCombatFromClass(
       if (this.isOver) return;
 
       // ——— Turno NEMICO ———
-      // Se nemico stordito: salta turno e decrementa
       if (this.state.enemy.stunned > 0) {
         this.state.enemy.stunned = Math.max(0, this.state.enemy.stunned - 1);
         this.log.push(`💫 ${this.state.enemy.name} è stordito e salta il turno.`);
       } else {
-        // Nemico attacca con il suo ATK base
-        const raw = Math.max(0, Math.floor(this.state.enemy.atk));
+        const raw = Math.max(0, Math.floor(toInt(this.state.enemy.atk, 0)));
         if (raw > 0) {
           // Danno al player rispettando la difesa
           const beforeDef = this.state.player.defense;
@@ -235,10 +287,10 @@ export function createCombatFromClass(
       }
 
       // Controllo morte dopo l’azione nemico
-      const result = checkGameOver(this.state);
-      if (result.over) {
+      const afterEnemy = checkGameOver(this.state);
+      if (afterEnemy.over) {
         this.isOver = true;
-        this.winner = result.winner;
+        this.winner = afterEnemy.winner;
         if (this.winner === "player") this.log.push(`🏆 ${this.state.player.name} ha sconfitto ${this.state.enemy.name}!`);
         else if (this.winner === "enemy") this.log.push(`💀 ${this.state.player.name} è stato sconfitto.`);
         else this.log.push(`☠️ Siete caduti entrambi.`);
@@ -249,9 +301,11 @@ export function createCombatFromClass(
       const regen = 3;
       this.state.stamina = Math.min(this.state.stamina + regen, this.state.staminaMax);
 
-      // Pesca nuova mano: scarta la mano attuale e ripesca
-      this.deck.discardPile.push(...this.deck.hand);
-      this.deck.hand = [];
+      // Scarta la mano e ripesca
+      if (this.deck.hand.length) {
+        this.deck.discardPile.push(...this.deck.hand);
+        this.deck.hand = [];
+      }
       this.draw(this.deck.handSize);
     },
   };
